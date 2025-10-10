@@ -1,6 +1,6 @@
 import puppeteer from 'puppeteer'
 import fs from 'fs/promises'
- 
+
 const height = 720
 const width = 500
 
@@ -27,6 +27,9 @@ const browser = await puppeteer.launch({
     '--disable-sync',
     `--window-size=${width},${height}`,
     '--ignore-certificate-errors',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-background-timer-throttling',
   ],
 })
 
