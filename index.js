@@ -69,8 +69,8 @@ try {
     logger('window active')
     state.autoReply.enable = false
     await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal', top: 100, left: 100 } })
-    await delay(500)
-    await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'maximized' } })
+    // await delay(500)
+    // await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'maximized' } })
   }
 
   const sendMessages = async (messages = []) => {
