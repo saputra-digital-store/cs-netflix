@@ -68,7 +68,7 @@ try {
     console.log('window active')
     logger('window active')
     state.autoReply.enable = false
-    await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal' } })
+    await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal', width, height } })
   }
 
   const sendMessages = async (messages = []) => {
@@ -115,7 +115,7 @@ try {
           'next-minute',
         ]
 
-        if (message.sender.startsWith('P_') && message.sender !== 'P_-100' && text.endsWith('?')) {
+        if (message.sender.startsWith('P_') && !message.sender.startsWith('P_-') && text.endsWith('?')) {
           logger('message endsWith ?')
           await setWindowActive()
           return
@@ -123,7 +123,7 @@ try {
 
         if (
           message.sender.startsWith('P_') &&
-          message.sender !== 'P_-100' &&
+          !message.sender.startsWith('P_-') &&
           !text.includes('https://') &&
           (text.includes('email') || text.includes('name'))
         ) {
@@ -134,7 +134,7 @@ try {
 
         if (
           message.sender.startsWith('P_') &&
-          message.sender !== 'P_-100' &&
+          !message.sender.startsWith('P_-') &&
           !patternCheckingMessage.some((p) => text.toLowerCase().includes(p)) &&
           text.length < 100
         ) {
@@ -155,7 +155,7 @@ try {
 
             const lastMessage = state.messages.at(-1)
 
-            if (lastMessage.sender === 'P_-100') {
+            if (lastMessage.sender.startsWith('P_-')) {
               sendMessages(replyTexts)
               return
             }
