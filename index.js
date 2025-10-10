@@ -64,6 +64,7 @@ try {
   const session = await page.createCDPSession()
   const { windowId } = await session.send('Browser.getWindowForTarget')
   await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } })
+  await delay(500)
 
   await page.goto(defaultUrl, { waitUntil: 'domcontentloaded' })
 
