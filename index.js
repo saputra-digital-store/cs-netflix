@@ -1,6 +1,6 @@
 import puppeteer from 'puppeteer'
 import fs from 'fs/promises'
-
+ 
 const height = 720
 const width = 500
 
