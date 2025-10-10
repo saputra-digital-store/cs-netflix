@@ -76,12 +76,10 @@ try {
       try {
         const iframeHandle = await page.$('iframe[name="spr-chat__box-frame"]')
         const frame = await iframeHandle.contentFrame()
-
-        const textarea = await frame.$('#COMPOSER_ID')
+        const textarea = await frame.waitForSelector('#COMPOSER_ID', { visible: true })
         await textarea.focus()
         await frame.type('#COMPOSER_ID', message)
-
-        const sendBtn = await frame.$('[data-testid="Submit"]')
+        const sendBtn = await frame.waitForSelector('[data-testid="Submit"]', { visible: true })
         await sendBtn.click()
       } catch (error) {
         console.error(error)
