@@ -26,10 +26,8 @@ const browser = await puppeteer.launch({
     '--disable-setuid-sandbox',
     '--disable-sync',
     `--window-size=${width},${height}`,
+    `--window-position=-2000,-2000`,
     '--ignore-certificate-errors',
-    '--disable-backgrounding-occluded-windows',
-    '--disable-renderer-backgrounding',
-    '--disable-background-timer-throttling',
   ],
 })
 
@@ -63,8 +61,6 @@ try {
   const [page] = await browser.pages()
   const session = await page.createCDPSession()
   const { windowId } = await session.send('Browser.getWindowForTarget')
-  await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } })
-  await delay(500)
 
   await page.goto(defaultUrl, { waitUntil: 'domcontentloaded' })
 
@@ -72,7 +68,9 @@ try {
     console.log('window active')
     logger('window active')
     state.autoReply.enable = false
-    await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal', width, height } })
+    await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal', top: 100, left: 100 } })
+    await delay(500)
+    await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'maximized' } })
   }
 
   const sendMessages = async (messages = []) => {
@@ -270,7 +268,7 @@ try {
     }
   })
 
-  const buttonChatAgent = await page.waitForSelector('div.chat-actions button.btn.btn-primary', { timeout: 9000000 })
+  const buttonChatAgent = await page.waitForSelector('div.chat-actions button.btn.btn-primary')
   await buttonChatAgent.click()
 } catch (error) {
   console.error(error)
