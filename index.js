@@ -1077,9 +1077,11 @@ class BrowserSession {
 
   async start() {
     if (this._state.running) return
-    this._isStopping = false
 
     try {
+      this._isStopping = false
+      this.state = { running: true }
+
       this._browser = await puppeteer.launch({
         headless: true,
         defaultViewport: null,
@@ -1248,8 +1250,6 @@ class BrowserSession {
         }
       })
 
-      this.state = { running: true }
-
       try {
         const buttonChatAgent = await page.waitForSelector('div.chat-actions button.btn.btn-primary')
         await buttonChatAgent.click()
@@ -1274,7 +1274,7 @@ class BrowserSession {
     await this._browser?.close()?.catch((error) => this.handleActivityUpdate(`Gagal menutup browser: ${error.message}`))
 
     browsers.delete(this.id)
-    this.state = { running: false, agent: {}, messages: [], waitTime: null }
+    this.state = { running: !force, agent: {}, messages: [], waitTime: null }
     this.handleActivityUpdate(`Browser ditutup`)
   }
 
@@ -1439,7 +1439,7 @@ app.get('/', (req, res) => {
                       } className='px-2.5 py-1 rounded bg-slate-200'>&#x2715;</button>
                   </div>
                 </div>
-                <div className="p-4 h-96 overflow-y-scroll">
+                <div className="p-4 h-96 overflow-y-scroll space-y-2">
                   {activeChat.messages.filter((m) => m.payload.type === 'NEW_MESSAGE' && m.payload.notificationContent).map((m) => {
                     const fromMe = !m.sender.startsWith('P_')
                     const text = m.payload.notificationContent
