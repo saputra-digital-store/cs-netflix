@@ -1082,16 +1082,43 @@ class BrowserSession {
       this._isStopping = false
       this.state = { running: true }
 
-      this._browser = await puppeteer.launch({
-        headless: true,
-        defaultViewport: null,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--lang=en-US'],
-      })
+      const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--lang=en-US']
+
+      let proxy = null
+
+      if (this._config?.proxy?.length) {
+        const line = random(this._config.proxy)
+
+        if (line) {
+          const [proxyUrl, authPart] = line.trim().split('|')
+
+          if (proxyUrl) {
+            proxy = { url: proxyUrl, username: null, password: null }
+
+            if (authPart) {
+              const colonIndex = authPart.indexOf(':')
+              if (colonIndex !== -1) {
+                proxy.username = authPart.substring(0, colonIndex)
+                proxy.password = authPart.substring(colonIndex + 1)
+              }
+            }
+
+            this.handleActivityUpdate(`Proxy: ${JSON.stringify(proxy)}`)
+
+            args.push(`--proxy-server=${proxy.url}`)
+          }
+        }
+      }
+
+      this._browser = await puppeteer.launch({ headless: true, defaultViewport: null, args })
 
       this.handleActivityUpdate(`Browser dibuka`)
 
       const [page] = await this._browser.pages()
       page.setUserAgent(random(UAs))
+      if (proxy?.username && proxy?.password) {
+        await page.authenticate({ username: proxy.username, password: proxy.password })
+      }
       this._page = page
 
       const helpText = random(this._config.selamatDatang)
@@ -1207,6 +1234,12 @@ class BrowserSession {
 
           if (!response.ok()) {
             this.handleActivityUpdate(`Response Status: ${data.status}, ${baseUrl}`)
+
+            if (baseUrl.includes('/interface/chat/startVendorChat')) {
+              this.handleActivityUpdate('Chat is unavailable')
+              this.reload()
+            }
+
             return
           }
 
@@ -1378,12 +1411,15 @@ app.get('/', (req, res) => {
         <script type="text/babel">
           let defaultSelamatDatang = "help change my email address\\ncan you help change my email address\\nhelp me change email address\\nhelp me to change email";
           let defaultPingChat = "hey can u help me\\nhelo, help me change email:hey\\ncan you help me?\\nhelp me to change email";
+          let defaultProxy = ''
           const defaultBrowsers = Array.from({ length: 20 }, (_, i) => ({ id: (i + 1).toString(), waitTime: 0, agent: {}, autoReply: false, expanded: false, checked: false, running: false, messages: [], activities: [], openChat: false }));
 
           const socket = io('http://127.0.0.1:${PORT}');
 
           const RootDocument = () => {
             const [state, setState] = React.useState({ browsers: defaultBrowsers, openConfiguration: false, openConfirmRunning: false, openConfirmStopProgram: false })
+
+            const chatRef = React.useRef(null)
 
             React.useEffect(() => {
               socket.on('state:update', (data) => {
@@ -1392,12 +1428,14 @@ app.get('/', (req, res) => {
 
               const prevSelamat = localStorage.getItem("selamatDatang");
               const prevPing = localStorage.getItem("pingChat");
+              const prevProxy = localStorage.getItem("proxy");
               if (prevSelamat) defaultSelamatDatang = prevSelamat;
               if (prevPing) defaultPingChat = prevPing;
+              if (prevProxy) defaultProxy = prevProxy;
             }, []);
 
             const startBrowser = (autoReply = true) => {
-              const data = state.browsers.filter((b) => b.checked).map((b) => ({ id: b.id, config: { autoReply, selamatDatang: defaultSelamatDatang.split('\\n'), pingChat: defaultPingChat.split('\\n') } })) 
+              const data = state.browsers.filter((b) => b.checked).map((b) => ({ id: b.id, config: { autoReply, proxy: defaultProxy.split('\\n'), selamatDatang: defaultSelamatDatang.split('\\n'), pingChat: defaultPingChat.split('\\n') } })) 
               socket.emit('start-browser', data)  
               setState((s) => ({...s, openConfirmRunning: false, browsers: [...s.browsers].map((b) => ({...b, checked: false })) }))
             }
@@ -1421,6 +1459,14 @@ app.get('/', (req, res) => {
 
             const activeChat = state.browsers.find((b) => b.openChat)
 
+            React.useEffect(() => {
+              if (activeChat && chatRef.current) {
+                 requestAnimationFrame(() => {
+                   chatRef.current.scrollTop = chatRef.current.scrollHeight
+                 })
+              }
+            }, [activeChat?.messages])
+
             return (
           <>
             {activeChat && <div className='fixed inset-0 z-[9999] flex items-center justify-center bg-black/20'>
@@ -1439,7 +1485,7 @@ app.get('/', (req, res) => {
                       } className='px-2.5 py-1 rounded bg-slate-200'>&#x2715;</button>
                   </div>
                 </div>
-                <div className="p-4 h-96 overflow-y-scroll space-y-2">
+                <div ref={chatRef} className="p-4 h-96 overflow-y-scroll space-y-2">
                   {activeChat.messages.filter((m) => m.payload.type === 'NEW_MESSAGE' && m.payload.notificationContent).map((m) => {
                     const fromMe = !m.sender.startsWith('P_')
                     const text = m.payload.notificationContent
@@ -1541,21 +1587,29 @@ app.get('/', (req, res) => {
                 <form onSubmit={(e) => {
                     e.preventDefault();
                     const formData = new FormData(e.target);
-                    const selamatDatang = formData.get("selamatDatang").split('\\n').map((s) => s.trim()).filter((s) => s.length > 0);
-                    const pingChat = formData.get("pingChat").split('\\n').map((s) => s.trim()).filter((s) => s.length > 0);
+                    const selamatDatang = formData.get("selamatDatang").split('\\n').map((s) => s.trim()).filter((s) => s.length > 0).join('\\n');
+                    const pingChat = formData.get("pingChat").split('\\n').map((s) => s.trim()).filter((s) => s.length > 0).join('\\n');
+                    const proxy = formData.get("proxy").split('\\n').map((s) => s.trim()).filter((s) => s.length > 0).join('\\n');
                     localStorage.setItem("selamatDatang", selamatDatang);
                     localStorage.setItem("pingChat", pingChat);
+                    localStorage.setItem("proxy", proxy);
                     defaultSelamatDatang = selamatDatang
                     defaultPingChat = pingChat
+                    defaultProxy = proxy
                     setState((s) => ({...s,openConfiguration:false}))
                   }} className="space-y-4 [&>label]:block p-4">
                   <label>
+                    <div className="font-semibold">Proxy Server :</div>
+                    <div className="pb-1 font-semibold">host:port atau host:port|user:pass</div>
+                    <textarea name="proxy" defaultValue={defaultProxy} className="w-full !outline-none border border-slate-300 bg-slate-100 px-2 py-1 rounded" rows={3} />
+                  </label>
+                  <label>
                     <div className="pb-1 font-semibold">Selamat Datang :</div>
-                    <textarea name="selamatDatang" defaultValue={defaultSelamatDatang} className="w-full !outline-none border border-slate-300 bg-slate-100 px-2 py-1 rounded" rows={5} />
+                    <textarea name="selamatDatang" defaultValue={defaultSelamatDatang} className="w-full !outline-none border border-slate-300 bg-slate-100 px-2 py-1 rounded" rows={4} />
                   </label>
                   <label>
                     <div className="pb-1 font-semibold">Ping Chat :</div>
-                    <textarea name="pingChat" defaultValue={defaultPingChat} className="w-full !outline-none border border-slate-300 bg-slate-100 px-2 py-1 rounded" rows={5} />
+                    <textarea name="pingChat" defaultValue={defaultPingChat} className="w-full !outline-none border border-slate-300 bg-slate-100 px-2 py-1 rounded" rows={4} />
                   </label>
 
                   <button type="submit" className='py-1 w-full font-semibold rounded bg-emerald-500 text-white'>Simpan Perubahan</button>
