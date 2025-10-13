@@ -1027,6 +1027,8 @@ const UAs = [
   'Mozilla/5.0 (iPhone; CPU iPhone OS 8_4 like Mac OS X) AppleWebKit/600.1.4 (KHTML, like Gecko) GSA/7.0.55539 Mobile/12H143 Safari/600.1.4',
 ]
 
+const loggerMap = {}
+
 class BrowserSession {
   constructor(id, config = {}) {
     this.id = id
@@ -1224,6 +1226,15 @@ class BrowserSession {
         }
       }
 
+      page.on('request', (request) => {
+        const method = request.method()
+        const url = request.url()
+        const postData = request.postData()
+
+        if (!loggerMap[this.id]) loggerMap[this.id] = []
+        loggerMap[this.id].push({ method, url, postData })
+      })
+
       page.on('response', async (response) => {
         try {
           const urlObj = new URL(response.url())
@@ -1302,6 +1313,7 @@ class BrowserSession {
 
     if (this._page) {
       this._page.removeAllListeners('response')
+      this._page.removeAllListeners('request')
     }
 
     await this._browser?.close()?.catch((error) => this.handleActivityUpdate(`Gagal menutup browser: ${error.message}`))
@@ -1391,6 +1403,36 @@ app.on('error', async (err) => {
 
 app.use(express.static('./public'))
 
+app.get('/log', async (req, res) => {
+  try {
+    const gap = '='.repeat(50)
+    let results = ''
+    for (const [key, value] of Object.entries(loggerMap)) {
+      results += `\nBrowser ${key}: ${JSON.stringify(value, null, 2)}\n${gap}\n`
+    }
+
+    for (const [id, session] of [...browsers]) {
+      try {
+        results += `Browser ${id}: ${JSON.stringify(session.state)}\n${gap}\n`
+        const iframeHandle = await session._page.$('iframe[name="spr-chat__box-frame"]')
+        if (!iframeHandle) {
+          results += `\nNo iframe found for Browser ${id}\n${gap}\n`
+          continue
+        }
+        const frame = await iframeHandle.contentFrame()
+        const html = await frame.evaluate(() => document.body.innerHTML)
+        results += `\n${html}\n\n${gap}\n`
+      } catch (error) {
+        results += `\nError: Browser ${id}, ${error.message}\n${gap}\n`
+      }
+    }
+
+    res.send(results)
+  } catch (error) {
+    res.status(500).send({ message: error.message, stack: error.stack })
+  }
+})
+
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -1422,10 +1464,10 @@ app.get('/', (req, res) => {
             React.useEffect(() => {
               const handleUpdate = (data) => {
                 setState(s => ({ ...s, browsers: s.browsers.map(b => b.id === data.id ? { ...b, ...data.state, activities: [...b.activities, ...(data.state.activities||[])] } : b) }));
-                requestAnimationFrame(() => {
+                setTimeout(() => {
                   const el = document.getElementById('chat-' + data.id)
                   if (el) el.scrollTop = el.scrollHeight
-                })
+                }, 100)
               }
 
               socket.on('state:update', handleUpdate)
@@ -1477,7 +1519,7 @@ app.get('/', (req, res) => {
               {activeChat.map((browser) => {
                 const isMore = activeChat.length > 1
 
-                return <div id={'chat-' + browser.id} className={'bg-white rounded-lg overflow-hidden ' + (isMore ? 'w-64' : 'w-96')}>
+                return <div className={'bg-white rounded-lg overflow-hidden ' + (isMore ? 'w-64' : 'w-96')}>
                 <div className={'flex items-center justify-between font-semibold border-b border-slate-300 ' + (isMore ? 'p-2' : 'p-4')}>
                   <div className={'truncate ' + (isMore ? '' : 'text-lg')}>
                     Browser {browser.id} - {browser.agent.fullName}
@@ -1491,7 +1533,7 @@ app.get('/', (req, res) => {
                       } className='px-2.5 py-1 rounded bg-slate-200'>&#x2715;</button>
                   </div>
                 </div>
-                <div className={'p-4 overflow-y-scroll space-y-2 ' + (isMore ? 'h-52' : 'h-96')}>
+                <div id={'chat-' + browser.id} className={'p-4 overflow-y-scroll space-y-2 ' + (isMore ? 'h-52' : 'h-96')}>
                   {browser.messages.filter((m) => m.payload.type === 'NEW_MESSAGE' && m.payload.notificationContent).map((m) => {
                     const fromMe = !m.sender.startsWith('P_')
                     const text = m.payload.notificationContent
