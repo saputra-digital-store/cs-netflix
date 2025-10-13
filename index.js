@@ -1419,12 +1419,16 @@ app.get('/', (req, res) => {
           const RootDocument = () => {
             const [state, setState] = React.useState({ browsers: defaultBrowsers, openConfiguration: false, openConfirmRunning: false, openConfirmStopProgram: false })
 
-            const chatRef = React.useRef(null)
-
             React.useEffect(() => {
-              socket.on('state:update', (data) => {
+              const handleUpdate = (data) => {
                 setState(s => ({ ...s, browsers: s.browsers.map(b => b.id === data.id ? { ...b, ...data.state, activities: [...b.activities, ...(data.state.activities||[])] } : b) }));
-              })
+                requestAnimationFrame(() => {
+                  const el = document.getElementById('chat-' + data.id)
+                  if (el) el.scrollTop = el.scrollHeight
+                })
+              }
+
+              socket.on('state:update', handleUpdate)
 
               const prevSelamat = localStorage.getItem("selamatDatang");
               const prevPing = localStorage.getItem("pingChat");
@@ -1432,6 +1436,10 @@ app.get('/', (req, res) => {
               if (prevSelamat) defaultSelamatDatang = prevSelamat;
               if (prevPing) defaultPingChat = prevPing;
               if (prevProxy) defaultProxy = prevProxy;
+
+              return () => {
+                socket.off('state:update', handleUpdate)
+              }
             }, []);
 
             const startBrowser = (autoReply = true) => {
@@ -1457,36 +1465,34 @@ app.get('/', (req, res) => {
 
             console.log(state)
 
-            const activeChat = state.browsers.find((b) => b.openChat)
+            const activeChat = state.browsers.filter((b) => b.openChat)
+            const unactiveTab = state.browsers.filter((b) => !b.openChat)
 
-            React.useEffect(() => {
-              if (activeChat && chatRef.current) {
-                 requestAnimationFrame(() => {
-                   chatRef.current.scrollTop = chatRef.current.scrollHeight
-                 })
-              }
-            }, [activeChat?.messages])
+            if (activeChat.length === 0) document.body.style.overflow = 'auto'
+            else document.body.style.overflow = 'hidden'
 
             return (
           <>
-            {activeChat && <div className='fixed inset-0 z-[9999] flex items-center justify-center bg-black/20'>
-              <div className='bg-white rounded-lg w-96 overflow-hidden'>
-                <div className='p-4 flex items-center justify-between font-semibold border-b border-slate-300'>
-                  <div className='text-lg truncate'>
-                    Browser {activeChat.id} - {activeChat.agent.fullName}
+            {activeChat.length > 0 && <div className='fixed inset-0 z-[9999] flex items-center justify-center flex-wrap p-2 gap-2 bg-black/40 overflow-y-auto'>
+              {activeChat.map((browser) => {
+                const isMore = activeChat.length > 1
+
+                return <div id={'chat-' + browser.id} className={'bg-white rounded-lg overflow-hidden ' + (isMore ? 'w-64' : 'w-96')}>
+                <div className={'flex items-center justify-between font-semibold border-b border-slate-300 ' + (isMore ? 'p-2' : 'p-4')}>
+                  <div className={'truncate ' + (isMore ? '' : 'text-lg')}>
+                    Browser {browser.id} - {browser.agent.fullName}
                   </div>
                   <div className='flex items-center gap-2'>
-                    {activeChat.autoReply && <button onClick={() => stopBot(activeChat.id)} 
+                    {browser.autoReply && <button onClick={() => stopBot(browser.id)} 
                       className='px-2.5 py-1 rounded bg-emerald-500 text-white whitespace-nowrap'>Tutup Bot</button>
-                      }
+                    }
                     <button onClick={() => {
-                      document.body.style.overflow = 'auto'
-                      setState((s) => ({...s,browsers: [...s.browsers].map((b) => ({...b, openChat: false })) }))}
+                      setState((s) => ({...s,browsers: [...s.browsers].map((b) => b.id === browser.id ? {...b, openChat: false } : b) }))}
                       } className='px-2.5 py-1 rounded bg-slate-200'>&#x2715;</button>
                   </div>
                 </div>
-                <div ref={chatRef} className="p-4 h-96 overflow-y-scroll space-y-2">
-                  {activeChat.messages.filter((m) => m.payload.type === 'NEW_MESSAGE' && m.payload.notificationContent).map((m) => {
+                <div className={'p-4 overflow-y-scroll space-y-2 ' + (isMore ? 'h-52' : 'h-96')}>
+                  {browser.messages.filter((m) => m.payload.type === 'NEW_MESSAGE' && m.payload.notificationContent).map((m) => {
                     const fromMe = !m.sender.startsWith('P_')
                     const text = m.payload.notificationContent
                     return <div key={m.id} className={'flex flex-col'}>
@@ -1501,11 +1507,11 @@ app.get('/', (req, res) => {
                 </div>
                 <form id="chat" onSubmit={(e) => {
                     e.preventDefault();
-                    if (!activeChat.messages.length) return
+                    if (!browser.messages.length) return
                     const formData = new FormData(e.target);
                     const message = formData.get('message').trim()
                     if (!message) return
-                    socket.emit('send-message', { id: activeChat.id, message })
+                    socket.emit('send-message', { id: browser.id, message })
                     e.currentTarget.reset();
                   }} className="shadow gap-1 flex items-center border-t border-slate-300">
                    <textarea
@@ -1556,6 +1562,27 @@ app.get('/', (req, res) => {
                   </button>
                 </form>
               </div>
+              })}
+
+              {unactiveTab.length > 0 && <div className="rounded-lg divide-y divide-slate-300 bg-white border border-slate-300 h-60 w-48 overflow-y-auto">
+              {unactiveTab.find((b) => b.agent.fullName) && <div className="bg-white sticky top-0 font-semibold text-center">
+                <button onClick={() => {
+                  setState(s => ({
+                    ...s,
+                    browsers: s.browsers.map(b => {
+                      const isInUnactive = unactiveTab.some(u => u.id === b.id && u.agent.fullName);
+                      return isInUnactive ? { ...b, openChat: true } : b;
+                    })
+                  }));
+                  }} className="text-blue-500 cursor-pointer p-2">&#43; Semua Pesan Aktif</button>
+              </div>}
+              {unactiveTab.map((browser) => {
+                    return <div className="flex items-center justify-between font-semibold p-2 hover:bg-slate-100">
+                      <div>Browser {browser.id}</div>
+                      <button onClick={() => setState((s) => ({...s, browsers: s.browsers.map((b) => browser.id === b.id ? { ...b, openChat: true } : b )}))} className="text-blue-500 cursor-pointer">Tambah</button>
+                    </div>
+                  })}
+              </div>}
             </div>
           }
             {state.openConfirmStopProgram && <div className='fixed inset-0 z-[9999] flex items-center justify-center bg-black/20'>
@@ -1719,7 +1746,6 @@ app.get('/', (req, res) => {
                               <div className="text-center w-28 text-blue-500 flex items-center justify-center gap-1">
                                 <button onClick={(e) => {
                                     e.stopPropagation()
-                                    document.body.style.overflow = 'hidden';
                                     setState((s) => ({...s, browsers: s.browsers.map((b) => browser.id === b.id ? { ...b, openChat: true } : b )}))
                                   }}
                                   className="cursor-pointer">Lihat Pesan</button>
