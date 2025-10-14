@@ -1059,6 +1059,26 @@ class BrowserSession {
     io.emit('state:update', { id: this.id, state: { activities: [{ text, date: Date.now() }] } })
   }
 
+  async submitSecureForm(message, messageId) {
+    try {
+      const prevMessage = this._state.messages.find((m) => m.payload?.messageId === messageId)
+      if (!prevMessage) {
+        this.handleActivityUpdate(`Pesan tidak ditemukan`)
+        return
+      }
+      const dataId = prevMessage.payload.chatMessage.messagePayload.attachment.form.fields[0].fieldName
+      const iframeHandle = await this._page.$('iframe[name="spr-chat__box-frame"]')
+      const frame = await iframeHandle.contentFrame()
+      const input = await frame.waitForSelector(`[data-id="${dataId}"]`, { visible: true })
+      await input.type(message)
+      const formHandle = await input.evaluateHandle((el) => el.closest('form'))
+      const sendBtn = await formHandle.$('button[type="button"]')
+      await sendBtn.click()
+    } catch (error) {
+      this.handleActivityUpdate(`Submit gagal: ${error.message}`)
+    }
+  }
+
   async sendMessages(messages) {
     for (const message of messages) {
       try {
@@ -1066,7 +1086,7 @@ class BrowserSession {
         const frame = await iframeHandle.contentFrame()
         const textarea = await frame.waitForSelector('#COMPOSER_ID', { visible: true })
         await textarea.focus()
-        await frame.type('#COMPOSER_ID', message)
+        await textarea.type(message)
         const sendBtn = await frame.waitForSelector('[data-testid="Submit"]', { visible: true })
         await sendBtn.click()
       } catch (error) {
@@ -1130,7 +1150,12 @@ class BrowserSession {
       const handleNewMessage = async (messages = []) => {
         if (!messages.length) return
 
-        this.state = { messages: [...this.state.messages, ...messages] }
+        this.state = {
+          messages: [
+            ...this.state.messages.filter((m) => !messages.some((n) => n.payload.messageId === m.id)),
+            ...messages,
+          ],
+        }
 
         if (!this._state.autoReply) return
 
@@ -1258,6 +1283,25 @@ class BrowserSession {
             data.body = JSON.parse(data.body)
           } catch {}
 
+          if (baseUrl.includes('/api/livechat/conversation/send')) {
+            this.state = {
+              messages: [
+                ...this.state.messages,
+                {
+                  id: data.body.id,
+                  payload: {
+                    type: 'NEW_MESSAGE',
+                    notificationContent: data.body.messagePayload.text,
+                  },
+                  conversationId: data.body.conversationId,
+                  sender: data.body.sender,
+                  creationTime: data.body.creationTime,
+                },
+              ],
+            }
+            return
+          }
+
           const matchIndex = processedPathnames.flat().findIndex((p) => baseUrl.includes(p))
 
           switch (matchIndex) {
@@ -1345,7 +1389,7 @@ class BrowserSession {
 
 const exitProcess = async (error) => {
   console.error(error)
-  await delay(3000)
+  await delay(1000)
   process.exit()
 }
 process.on('SIGINT', exitProcess)
@@ -1378,9 +1422,15 @@ function startServer() {
       process.exit()
     })
 
-    client.on('send-message', ({ id, message }) => {
+    client.on('send-message', ({ id, message, messageId }) => {
       const browser = browsers.get(id)
-      if (browser) browser.sendMessages([message])
+      if (browser) {
+        if (messageId) {
+          browser.submitSecureForm(message, messageId)
+        } else {
+          browser.sendMessages([message])
+        }
+      }
     })
 
     client.on('state:update', ({ id, state }) => {
@@ -1505,6 +1555,10 @@ app.get('/', (req, res) => {
               }, 1000)  
             }
 
+            const sendMessage = (id, message, messageId) => {
+               socket.emit('send-message', { id, message, messageId })  
+            }
+
             console.log(state)
 
             const activeChat = state.browsers.filter((b) => b.openChat)
@@ -1537,9 +1591,27 @@ app.get('/', (req, res) => {
                   {browser.messages.filter((m) => m.payload.type === 'NEW_MESSAGE' && m.payload.notificationContent).map((m) => {
                     const fromMe = !m.sender.startsWith('P_')
                     const text = m.payload.notificationContent
+                    const secureForm = m.payload?.chatMessage?.messagePayload?.attachment?.type === 'SECURE_FORM' ? m.payload?.chatMessage?.messagePayload?.attachment : undefined
+
                     return <div key={m.id} className={'flex flex-col'}>
                         <div className={'py-2 px-3 inline-block rounded-md max-w-[80%] break-normal w-fit text-sm ' + (fromMe ? 'bg-blue-500 text-white self-end' : 'bg-slate-200 self-start')}>
-                          {text}
+                          <div className="">{text}</div>
+                          {secureForm && !secureForm.hideAttachment && <form onSubmit={(e) => {
+                              e.preventDefault();
+                              const formData = new FormData(e.target);
+                              const cardNumber = formData.get('input-card').trim()
+                              if (!cardNumber) return
+                              sendMessage(browser.id, cardNumber, m.payload.messageId)
+                            }}>
+                            <label className="block space-y-1 py-2">
+                              <div>Card Number</div>
+                              <input disabled={secureForm?.submitted} name="input-card" placeholder={secureForm?.form?.fields?.[0]?.placeholder ?? 'Masukkan Nomor Kartu'}
+                                pattern={secureForm?.form?.fields?.[0]?.constraints?.[0]?.regex}
+                                className="w-full border border-slate-300 bg-white !outline-none rounded px-2 py-1"
+                              />
+                            </label>
+                            {!fromMe && <button type="submit" className="w-full py-1 font-semibold bg-blue-500 text-white rounded">{secureForm?.submit?.title ?? 'Submit'}</button>}
+                          </form>}
                         </div>
                         <div className={'text-slate-600 text-xs pt-1 ' + (fromMe ? 'self-end' : 'self-start')}>
                           {moment.unix(m.creationTime / 1000).format('HH:mm')}
@@ -1553,7 +1625,7 @@ app.get('/', (req, res) => {
                     const formData = new FormData(e.target);
                     const message = formData.get('message').trim()
                     if (!message) return
-                    socket.emit('send-message', { id: browser.id, message })
+                    sendMessage(browser.id, message)
                     e.currentTarget.reset();
                   }} className="shadow gap-1 flex items-center border-t border-slate-300">
                    <textarea
@@ -1587,6 +1659,8 @@ app.get('/', (req, res) => {
                           return;
                         }
                         e.preventDefault();
+                        e.currentTarget.target.style.height = 'auto';
+                        e.currentTarget.target.style.overflowY = 'auto';
                         document.getElementById('chat').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
                       }
                     }}
