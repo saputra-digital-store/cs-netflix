@@ -1509,7 +1509,7 @@ app.get('/', (req, res) => {
           const socket = io('http://127.0.0.1:${PORT}');
 
           const RootDocument = () => {
-            const [state, setState] = React.useState({ browsers: defaultBrowsers, openConfiguration: false, openConfirmRunning: false, openConfirmStopProgram: false })
+            const [state, setState] = React.useState({ browsers: defaultBrowsers, openConfiguration: false, openConfirmRunning: false, openConfirmStopProgram: false, minimized: false })
 
             React.useEffect(() => {
               const handleUpdate = (data) => {
@@ -1569,8 +1569,13 @@ app.get('/', (req, res) => {
 
             return (
           <>
-            {activeChat.length > 0 && <div className='fixed inset-0 z-[9999] flex items-center justify-center flex-wrap p-2 gap-2 bg-black/40 overflow-y-auto'>
-              {activeChat.map((browser) => {
+            {activeChat.length > 0 && !state.minimized && <div className='fixed flex flex-col inset-0 z-[9999] bg-black/40 overflow-y-auto'>
+            <button onClick={() => setState((s) => ({...s, minimized:true}))} className="p-2 w-full bg-white text-center cursor-pointer font-semibold hover:bg-slate-100">
+              Minimized
+            </button>
+
+            <div className="flex-1 flex items-center justify-center flex-wrap gap-2 p-2">
+            {activeChat.map((browser) => {
                 const isMore = activeChat.length > 1
 
                 return <div className={'bg-white rounded-lg overflow-hidden ' + (isMore ? 'w-64' : 'w-96')}>
@@ -1659,8 +1664,8 @@ app.get('/', (req, res) => {
                           return;
                         }
                         e.preventDefault();
-                        e.currentTarget.target.style.height = 'auto';
-                        e.currentTarget.target.style.overflowY = 'auto';
+                        e.currentTarget.style.height = 'auto'
+                        e.currentTarget.style.overflowY = 'auto'
                         document.getElementById('chat').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
                       }
                     }}
@@ -1699,6 +1704,7 @@ app.get('/', (req, res) => {
                     </div>
                   })}
               </div>}
+            </div>
             </div>
           }
             {state.openConfirmStopProgram && <div className='fixed inset-0 z-[9999] flex items-center justify-center bg-black/20'>
@@ -1862,7 +1868,7 @@ app.get('/', (req, res) => {
                               <div className="text-center w-28 text-blue-500 flex items-center justify-center gap-1">
                                 <button onClick={(e) => {
                                     e.stopPropagation()
-                                    setState((s) => ({...s, browsers: s.browsers.map((b) => browser.id === b.id ? { ...b, openChat: true } : b )}))
+                                    setState((s) => ({...s, minimized: false, browsers: s.browsers.map((b) => browser.id === b.id ? { ...b, openChat: true } : b )}))
                                   }}
                                   className="cursor-pointer">Lihat Pesan</button>
                                   {lastMessage?.sender?.startsWith('P_') && !lastMessage?.sender?.startsWith('P_-') && lastMessage?.sender !== 'P_0' && <span className="w-4 h-4 grid place-content-center text-white bg-rose-500 rounded-full">!</span>}
