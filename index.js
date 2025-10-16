@@ -1043,6 +1043,7 @@ class BrowserSession {
       waitTime: null,
       autoReply: config.autoReply ?? true,
       running: false,
+      closed: false,
     }
   }
 
@@ -1095,7 +1096,7 @@ class BrowserSession {
 
     try {
       this._isStopping = false
-      this.state = { running: true }
+      this.state = { running: true, closed: false }
 
       const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--lang=en-US']
 
@@ -1321,7 +1322,10 @@ class BrowserSession {
               break
             case 5:
               this.handleActivityUpdate(`Percakapan telah ditutup`)
-              this.reload()
+              this.state = { closed: true }
+              this.reloadTimer = setTimeout(() => {
+                this.reload()
+              }, Number(this._config.waitTimeReload) * 1000)
               break
             default:
               break
@@ -1347,6 +1351,7 @@ class BrowserSession {
     if (force) this._isStopping = true
     if (this.debounceMessageTimer) clearTimeout(this.debounceMessageTimer)
     if (this.waitTimeTimer) clearTimeout(this.waitTimeTimer)
+    if (this.reloadTimer) clearTimeout(this.reloadTimer)
 
     if (this._page) {
       this._page.removeAllListeners('response')
@@ -1356,7 +1361,7 @@ class BrowserSession {
     await this._browser?.close()?.catch((error) => this.handleActivityUpdate(`Gagal menutup browser: ${error.message}`))
 
     browsers.delete(this.id)
-    this.state = { running: !force, agent: {}, messages: [], waitTime: null }
+    this.state = { running: !force, agent: {}, messages: [], waitTime: null, closed: false }
     this.handleActivityUpdate(`Browser ditutup`)
   }
 
@@ -1497,7 +1502,8 @@ app.get('/', (req, res) => {
           let defaultSelamatDatang = "help change my email address\\ncan you help change my email address\\nhelp me change email address\\nhelp me to change email";
           let defaultPingChat = "hey can u help me\\nhelo, help me change email:hey\\ncan you help me?\\nhelp me to change email";
           let defaultProxy = ''
-          const defaultBrowsers = Array.from({ length: 20 }, (_, i) => ({ id: (i + 1).toString(), waitTime: 0, agent: {}, autoReply: false, expanded: false, checked: false, running: false, messages: [], activities: [], openChat: false }));
+          let defaultTimer = '0'
+          const defaultBrowsers = Array.from({ length: 20 }, (_, i) => ({ id: (i + 1).toString(), waitTime: 0, agent: {}, autoReply: false, expanded: false, checked: false, closed: false, running: false, messages: [], activities: [], openChat: false }));
 
           const socket = io('http://127.0.0.1:${PORT}');
 
@@ -1518,9 +1524,11 @@ app.get('/', (req, res) => {
               const prevSelamat = localStorage.getItem("selamatDatang");
               const prevPing = localStorage.getItem("pingChat");
               const prevProxy = localStorage.getItem("proxy");
+              const prevTimer = localStorage.getItem("timer");
               if (prevSelamat) defaultSelamatDatang = prevSelamat;
               if (prevPing) defaultPingChat = prevPing;
               if (prevProxy) defaultProxy = prevProxy;
+              if (prevTimer) defaultTimer = prevTimer;
 
               return () => {
                 socket.off('state:update', handleUpdate)
@@ -1528,7 +1536,7 @@ app.get('/', (req, res) => {
             }, []);
 
             const startBrowser = (autoReply = true) => {
-              const data = state.browsers.filter((b) => b.checked).map((b) => ({ id: b.id, config: { autoReply, proxy: defaultProxy.split('\\n'), selamatDatang: defaultSelamatDatang.split('\\n'), pingChat: defaultPingChat.split('\\n') } })) 
+              const data = state.browsers.filter((b) => b.checked).map((b) => ({ id: b.id, config: { autoReply, waitTimeReload: defaultTimer, proxy: defaultProxy.split('\\n'), selamatDatang: defaultSelamatDatang.split('\\n'), pingChat: defaultPingChat.split('\\n') } })) 
               socket.emit('start-browser', data)  
               setState((s) => ({...s, openConfirmRunning: false, browsers: [...s.browsers].map((b) => ({...b, checked: false })) }))
             }
@@ -1617,10 +1625,12 @@ app.get('/', (req, res) => {
                         </div>
                     </div>
                   })}
+
+                  {browser.closed && <div className="font-semibold text-center py-2">Percakapan ditutup.</div>}
                 </div>
                 <form id="chat" onSubmit={(e) => {
                     e.preventDefault();
-                    if (!browser.messages.length) return
+                    if (!browser.messages.length || browser.closed) return
                     const formData = new FormData(e.target);
                     const message = formData.get('message').trim()
                     if (!message) return
@@ -1733,14 +1743,21 @@ app.get('/', (req, res) => {
                     const selamatDatang = formData.get("selamatDatang").split('\\n').map((s) => s.trim()).filter((s) => s.length > 0).join('\\n');
                     const pingChat = formData.get("pingChat").split('\\n').map((s) => s.trim()).filter((s) => s.length > 0).join('\\n');
                     const proxy = formData.get("proxy").split('\\n').map((s) => s.trim()).filter((s) => s.length > 0).join('\\n');
+                    const timer = formData.get("timer");
                     localStorage.setItem("selamatDatang", selamatDatang);
                     localStorage.setItem("pingChat", pingChat);
                     localStorage.setItem("proxy", proxy);
+                    localStorage.setItem("timer", timer);
                     defaultSelamatDatang = selamatDatang
                     defaultPingChat = pingChat
                     defaultProxy = proxy
+                    defaultTimer = timer
                     setState((s) => ({...s,openConfiguration:false}))
-                  }} className="space-y-4 [&>label]:block p-4">
+                  }} className="space-y-2 [&>label]:block p-4">
+                  <label>
+                    <div className="font-semibold pb-1">Jeda Sebelum Percakapan Baru: {defaultTimer} detik</div>
+                    <input name="timer" type="number" defaultValue={defaultTimer} className="appearance-none [-moz-appearance:textfield] w-full !outline-none border border-slate-300 bg-slate-100 px-2 py-1 rounded" />
+                  </label>
                   <label>
                     <div className="font-semibold">Proxy Server :</div>
                     <div className="pb-1 font-semibold">host:port atau host:port|user:pass</div>
@@ -1748,11 +1765,11 @@ app.get('/', (req, res) => {
                   </label>
                   <label>
                     <div className="pb-1 font-semibold">Selamat Datang :</div>
-                    <textarea name="selamatDatang" defaultValue={defaultSelamatDatang} className="w-full !outline-none border border-slate-300 bg-slate-100 px-2 py-1 rounded" rows={4} />
+                    <textarea name="selamatDatang" defaultValue={defaultSelamatDatang} className="w-full !outline-none border border-slate-300 bg-slate-100 px-2 py-1 rounded" rows={3} />
                   </label>
                   <label>
                     <div className="pb-1 font-semibold">Ping Chat :</div>
-                    <textarea name="pingChat" defaultValue={defaultPingChat} className="w-full !outline-none border border-slate-300 bg-slate-100 px-2 py-1 rounded" rows={4} />
+                    <textarea name="pingChat" defaultValue={defaultPingChat} className="w-full !outline-none border border-slate-300 bg-slate-100 px-2 py-1 rounded" rows={3} />
                   </label>
 
                   <button type="submit" className='py-1 w-full font-semibold rounded bg-emerald-500 text-white'>Simpan Perubahan</button>
