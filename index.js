@@ -1669,8 +1669,8 @@ app.get('/', (req, res) => {
                         }
                         e.preventDefault();
                         e.currentTarget.style.height = 'auto'
-                        e.currentTarget.style.overflowY = 'auto'
-                        document.getElementById('chat').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                        const form = e.currentTarget.form;
+                        if (form) form.requestSubmit();
                       }
                     }}
                   />
