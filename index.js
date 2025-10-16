@@ -1061,18 +1061,11 @@ class BrowserSession {
 
   async submitSecureForm(message, messageId) {
     try {
-      const prevMessage = this._state.messages.find((m) => m.payload?.messageId === messageId)
-      if (!prevMessage) {
-        this.handleActivityUpdate(`Pesan tidak ditemukan`)
-        return
-      }
-      const dataId = prevMessage.payload.chatMessage.messagePayload.attachment.form.fields[0].fieldName
       const iframeHandle = await this._page.$('iframe[name="spr-chat__box-frame"]')
       const frame = await iframeHandle.contentFrame()
-      const input = await frame.waitForSelector(`[data-id="${dataId}"]`, { visible: true })
+      const input = await frame.waitForSelector(`#${messageId} form input`, { visible: true })
       await input.type(message)
-      const formHandle = await input.evaluateHandle((el) => el.closest('form'))
-      const sendBtn = await formHandle.$('button[type="button"]')
+      const sendBtn = await frame.waitForSelector(`#${messageId} form button`, { visible: true })
       await sendBtn.click()
     } catch (error) {
       this.handleActivityUpdate(`Submit gagal: ${error.message}`)
@@ -1607,6 +1600,7 @@ app.get('/', (req, res) => {
                               const cardNumber = formData.get('input-card').trim()
                               if (!cardNumber) return
                               sendMessage(browser.id, cardNumber, m.payload.messageId)
+                              e.currentTarget.reset();
                             }}>
                             <label className="block space-y-1 py-2">
                               <div>Card Number</div>
