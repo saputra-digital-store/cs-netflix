@@ -1064,9 +1064,10 @@ class BrowserSession {
     try {
       const iframeHandle = await this._page.$('iframe[name="spr-chat__box-frame"]')
       const frame = await iframeHandle.contentFrame()
-      const input = await frame.waitForSelector(`#${messageId} form input`, { visible: true })
+      const input = await frame.waitForSelector(`[id="${messageId}"] form input`, { visible: true })
+      await input.focus()
       await input.type(message)
-      const sendBtn = await frame.waitForSelector(`#${messageId} form button`, { visible: true })
+      const sendBtn = await frame.waitForSelector(`[id="${messageId}"] form button`, { visible: true })
       await sendBtn.click()
     } catch (error) {
       this.handleActivityUpdate(`Submit gagal: ${error.message}`)
