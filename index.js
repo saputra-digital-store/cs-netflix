@@ -1064,10 +1064,10 @@ class BrowserSession {
     try {
       const iframeHandle = await this._page.$('iframe[name="spr-chat__box-frame"]')
       const frame = await iframeHandle.contentFrame()
-      const input = await frame.waitForSelector(`[id="${messageId}"] form input`, { visible: true })
+      const input = await frame.waitForSelector(`[id="${messageId}"] form input`, { visible: true, timeout: 5000 })
       await input.focus()
       await input.type(message)
-      const sendBtn = await frame.waitForSelector(`[id="${messageId}"] form button`, { visible: true })
+      const sendBtn = await frame.waitForSelector(`[id="${messageId}"] form button`, { visible: true, timeout: 5000 })
       await sendBtn.click()
     } catch (error) {
       this.handleActivityUpdate(`Submit gagal: ${error.message}`)
@@ -1079,10 +1079,10 @@ class BrowserSession {
       try {
         const iframeHandle = await this._page.$('iframe[name="spr-chat__box-frame"]')
         const frame = await iframeHandle.contentFrame()
-        const textarea = await frame.waitForSelector('#COMPOSER_ID', { visible: true })
+        const textarea = await frame.waitForSelector('#COMPOSER_ID', { visible: true, timeout: 5000 })
         await textarea.focus()
         await textarea.type(message)
-        const sendBtn = await frame.waitForSelector('[data-testid="Submit"]', { visible: true })
+        const sendBtn = await frame.waitForSelector('[data-testid="Submit"]', { visible: true, timeout: 5000 })
         await sendBtn.click()
       } catch (error) {
         this.handleActivityUpdate(`Pesan gagal: ${error.message}`)
@@ -1140,7 +1140,6 @@ class BrowserSession {
 
       const helpText = random(this._config.selamatDatang)
       const defaultUrl = `https://help.netflix.com/en/interface/chat?helpText=${encodeURIComponent(helpText)}`
-      await page.goto(defaultUrl, { waitUntil: 'domcontentloaded' })
 
       const handleNewMessage = async (messages = []) => {
         if (!messages.length) return
@@ -1266,7 +1265,7 @@ class BrowserSession {
           if (!response.ok()) {
             this.handleActivityUpdate(`Response Status: ${data.status}, ${baseUrl}`)
 
-            if (baseUrl.includes('/interface/chat/startVendorChat')) {
+            if (baseUrl.includes('/interface/chat/startVendorChat') || baseUrl.includes('/interface/chat/authorize')) {
               this.handleActivityUpdate('Chat is unavailable')
               this.reload()
             }
@@ -1336,6 +1335,8 @@ class BrowserSession {
         }
       })
 
+      await page.goto(defaultUrl, { waitUntil: 'domcontentloaded' })
+
       try {
         const buttonChatAgent = await page.waitForSelector('div.chat-actions button.btn.btn-primary')
         await buttonChatAgent.click()
@@ -1389,7 +1390,7 @@ class BrowserSession {
 const exitProcess = async (error) => {
   console.error(error)
   await delay(1000)
-  process.exit()
+  process.exit(1)
 }
 process.on('SIGINT', exitProcess)
 process.on('unhandledRejection', exitProcess)
@@ -1438,17 +1439,17 @@ function startServer() {
     })
   })
 
+  server.on('error', async (err) => {
+    if (err.code === 'EADDRINUSE') {
+      await killPort(PORT, 'tcp').then(startServer).catch(exitProcess)
+    }
+  })
+
   server.listen(PORT, '127.0.0.1', async () => {
     console.log(`Listening: ${PORT}`)
     if (!isDev) open(`http://127.0.0.1:${PORT}`)
   })
 }
-
-app.on('error', async (err) => {
-  if (err.code === 'EADDRINUSE') {
-    await killPort(PORT, 'tcp').then(startServer).catch(exitProcess)
-  }
-})
 
 app.use(express.static('./public'))
 
