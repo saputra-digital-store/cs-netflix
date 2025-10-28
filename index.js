@@ -1389,8 +1389,9 @@ class BrowserSession {
 
 const exitProcess = async (error) => {
   console.error(error)
+  ;[...browsers].forEach(([id, s]) => s?._browser?.close()?.catch(() => {}))
   await delay(1000)
-  process.exit(1)
+  process.exit()
 }
 process.on('SIGINT', exitProcess)
 process.on('unhandledRejection', exitProcess)
@@ -1418,9 +1419,7 @@ function startServer() {
       if (browser) browser.stop(true)
     })
 
-    client.on('stop-program', () => {
-      process.exit()
-    })
+    client.on('stop-program', exitProcess)
 
     client.on('send-message', ({ id, message, messageId }) => {
       const browser = browsers.get(id)
