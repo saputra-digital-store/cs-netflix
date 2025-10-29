@@ -1132,6 +1132,7 @@ class BrowserSession {
       this.handleActivityUpdate(`Browser dibuka`)
 
       const [page] = await this._browser.pages()
+      page.setDefaultTimeout(30_000)
       page.setUserAgent(random(UAs))
       if (proxy?.username && proxy?.password) {
         await page.authenticate({ username: proxy.username, password: proxy.password })
