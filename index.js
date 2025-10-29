@@ -1095,6 +1095,8 @@ class BrowserSession {
   async start() {
     if (this._state.running) return
 
+    let shouldReload = true
+
     try {
       this._isStopping = false
       this.state = { running: true, closed: false }
@@ -1268,6 +1270,7 @@ class BrowserSession {
 
             if (baseUrl.includes('/interface/chat/startVendorChat') || baseUrl.includes('/interface/chat/authorize')) {
               this.handleActivityUpdate('Chat is unavailable')
+              shouldReload = false
               this.reload()
             }
 
@@ -1346,7 +1349,7 @@ class BrowserSession {
       }
     } catch (error) {
       this.handleActivityUpdate(`Gagal membuka browser: ${error.message}`)
-      this.reload()
+      if (shouldReload) this.reload()
     }
   }
 
