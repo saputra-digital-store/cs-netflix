@@ -278,6 +278,18 @@ class BrowserSession {
             data.body = JSON.parse(data.body)
           } catch {}
 
+          if (baseUrl.includes('/api/pci/resources')) {
+            this.state = {
+              messages: this._state.messages.map((m) => {
+                if (m?.payload?.chatMessage?.messagePayload?.attachment?.type === 'SECURE_FORM') {
+                  m?.payload?.chatMessage?.messagePayload?.attachment.hideAttachment = true
+                }
+                return m
+              }),
+            }
+            return
+          }
+
           if (baseUrl.includes('/api/livechat/conversation/send')) {
             this.state = {
               messages: [
