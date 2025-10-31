@@ -281,8 +281,21 @@ class BrowserSession {
           if (baseUrl.includes('/api/pci/resources')) {
             this.state = {
               messages: this._state.messages.map((m) => {
-                if (m?.payload?.chatMessage?.messagePayload?.attachment?.type === 'SECURE_FORM') {
-                  m?.payload?.chatMessage?.messagePayload?.attachment.hideAttachment = true
+                const attachment = m?.payload?.chatMessage?.messagePayload?.attachment
+                if (attachment?.type === 'SECURE_FORM') {
+                  return {
+                    ...m,
+                    payload: {
+                      ...m.payload,
+                      chatMessage: {
+                        ...m.payload.chatMessage,
+                        messagePayload: {
+                          ...m.payload.chatMessage.messagePayload,
+                          attachment: { ...attachment, hideAttachment: true },
+                        },
+                      },
+                    },
+                  }
                 }
                 return m
               }),
