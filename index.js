@@ -62,19 +62,26 @@ class BrowserSession {
     try {
       const iframeHandle = await this._page.$('iframe[name="spr-chat__box-frame"]')
       const frame = await iframeHandle.contentFrame()
-      const input = await frame.waitForSelector(`[id="${messageId}"] form input`)
-      await frame.evaluate((el) => {
-        el.value = ''
-        el.dispatchEvent(new Event('input', { bubbles: true }))
-      }, input)
+
+      const input = await frame.$(`[id="${messageId}"] form input`)
+
+      if (!input) {
+        this.handleActivityUpdate(`Submit Gagal: input card number tidak ditemukan`)
+        return
+      }
+
       await input.focus()
-      await input.type(message)
-      await frame.evaluate((el) => {
-        el.dispatchEvent(new Event('input', { bubbles: true }))
-        el.dispatchEvent(new Event('change', { bubbles: true }))
-      }, input)
-      const sendBtn = await frame.waitForSelector(`[id="${messageId}"] form button`)
-      await sendBtn.evaluate((b) => b.click())
+      await input.click({ clickCount: 3 })
+      await input.type(message, { delay: 100 })
+
+      const button = await frame.$(`[id="${messageId}"] form button`)
+
+      if (!button) {
+        this.handleActivityUpdate(`Submit Gagal: button submit input card tidak ditemukan`)
+        return
+      }
+
+      await button.click()
     } catch (error) {
       this.handleActivityUpdate(`Submit gagal: ${error.message}`)
     }
@@ -274,7 +281,7 @@ class BrowserSession {
             this.handleActivityUpdate(`Response Status: ${data.status}, ${baseUrl}`)
 
             if (baseUrl.includes('/api/pci/resources')) {
-              this.handleActivityUpdate(data.body)
+              this.handleActivityUpdate(`Response Error Input Kartu: ${data.body}`)
             }
 
             if (baseUrl.includes('/interface/chat/startVendorChat') || baseUrl.includes('/interface/chat/authorize')) {
