@@ -74,6 +74,23 @@ class BrowserSession {
       await input.click({ clickCount: 3 })
       await input.type(message, { delay: 100 })
 
+      await frame.$eval(`[id="${messageId}"] form input`, (el) => {
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+        el.dispatchEvent(new Event('change', { bubbles: true }))
+        el.dispatchEvent(new Event('blur', { bubbles: true }))
+      })
+
+      await frame
+        .waitForFunction(
+          (id) => {
+            const btn = document.querySelector(`[id="${id}"] form button`)
+            return btn && !btn.disabled
+          },
+          { polling: 200, timeout: 5000 },
+          messageId
+        )
+        .catch(() => null)
+
       const button = await frame.$(`[id="${messageId}"] form button`)
 
       if (!button) {
@@ -81,6 +98,7 @@ class BrowserSession {
         return
       }
 
+      await button.focus()
       await button.click()
     } catch (error) {
       this.handleActivityUpdate(`Submit gagal: ${error.message}`)
