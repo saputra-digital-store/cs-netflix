@@ -72,7 +72,7 @@ class BrowserSession {
 
       await input.focus()
       await input.click({ clickCount: 3 })
-      await input.type(message, { delay: 100 })
+      await input.type(message, { delay: 50 })
 
       await frame.$eval(`[id="${messageId}"] form input`, (el) => {
         el.dispatchEvent(new Event('input', { bubbles: true }))
@@ -160,15 +160,22 @@ class BrowserSession {
         }
       }
 
-      this._browser = await puppeteer.launch({ headless: true, defaultViewport: null, args })
+      this._browser = await puppeteer.launch({ headless: false, defaultViewport: null, args })
+
+      this._browser.once('disconnected', () => this.stop())
 
       this.handleActivityUpdate(`Browser dibuka`)
 
       const [page] = await this._browser.pages()
-      page.setDefaultTimeout(30_000)
+
+      const session = await page.target().createCDPSession()
+      const { windowId } = await session.send('Browser.getWindowForTarget')
+      await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } })
+
       if (proxy?.username && proxy?.password) {
         await page.authenticate({ username: proxy.username, password: proxy.password })
       }
+
       this._page = page
 
       const helpText = random(this._config.selamatDatang)
