@@ -132,7 +132,14 @@ class BrowserSession {
       this._isStopping = false
       this.state = { running: true, closed: false }
 
-      const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--lang=en-US']
+      const args = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--lang=en-US',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+      ]
 
       let proxy = null
 
@@ -171,6 +178,8 @@ class BrowserSession {
       const session = await page.target().createCDPSession()
       const { windowId } = await session.send('Browser.getWindowForTarget')
       await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } })
+      await session.send('Page.enable')
+      await session.send('Page.setWebLifecycleState', { state: 'active' })
 
       if (proxy?.username && proxy?.password) {
         await page.authenticate({ username: proxy.username, password: proxy.password })
